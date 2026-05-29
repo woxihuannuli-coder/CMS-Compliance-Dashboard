@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CMS Compliance Dashboard - Cardiology 고위험 의사 모니터링</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --color-background-primary: #ffffff;
@@ -65,6 +66,29 @@
   .mult-high { color: #791F1F; }
   .mult-mid { color: #BA7517; }
   .mult-low { color: #3B6D11; }
+
+  .status-banner {
+    padding: 12px 16px;
+    border-radius: var(--border-radius-md);
+    font-size: 13px;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-loading { background: #E6F1FB; color: #0C447C; }
+  .status-error { background: #FCEBEB; color: #791F1F; }
+  .status-success { background: #EAF3DE; color: #3B6D11; }
+  .spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -72,93 +96,101 @@
 
   <div class="page-header">
     <h1>CMS Compliance Dashboard</h1>
-    <p>Cardiology 진료과 고위험 의사 모니터링 · 2026 Q2</p>
+    <p>Cardiology 진료과 고위험 의사 모니터링 · Supabase 연동 · 실시간 데이터</p>
+  </div>
+
+  <div id="statusBanner" class="status-banner status-loading">
+    <span class="spinner"></span>
+    <span id="statusText">Supabase에서 데이터를 불러오는 중...</span>
   </div>
 
   <h2 class="sr-only">Cardiology 고위험 의사 Top 10을 위험 유형(대량형/고가형/균형형)으로 자동 분류한 순위표</h2>
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 1.5rem;">
-    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px;">
-      <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">총 고위험</p>
-      <p style="font-size: 22px; font-weight: 500; margin: 0;">10명</p>
-    </div>
-    <div style="background: #FCEBEB; border-radius: var(--border-radius-md); padding: 12px;">
-      <p style="font-size: 12px; color: #791F1F; margin: 0 0 4px;"><i class="ti ti-stack-2"></i> 대량형</p>
-      <p style="font-size: 22px; font-weight: 500; margin: 0; color: #501313;">6명</p>
-    </div>
-    <div style="background: #FAEEDA; border-radius: var(--border-radius-md); padding: 12px;">
-      <p style="font-size: 12px; color: #854F0B; margin: 0 0 4px;"><i class="ti ti-coin"></i> 고가형</p>
-      <p style="font-size: 22px; font-weight: 500; margin: 0; color: #633806;">3명</p>
-    </div>
-    <div style="background: #E6F1FB; border-radius: var(--border-radius-md); padding: 12px;">
-      <p style="font-size: 12px; color: #0C447C; margin: 0 0 4px;"><i class="ti ti-scale"></i> 균형형</p>
-      <p style="font-size: 22px; font-weight: 500; margin: 0; color: #042C53;">1명</p>
-    </div>
-  </div>
+  <div id="dashboardContent" style="display: none;">
 
-  <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
-    <button class="filter-chip active" data-filter="all">전체 10</button>
-    <button class="filter-chip" data-filter="volume">대량형 6</button>
-    <button class="filter-chip" data-filter="premium">고가형 3</button>
-    <button class="filter-chip" data-filter="balanced">균형형 1</button>
-  </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 1.5rem;">
+      <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px;">
+        <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">총 고위험</p>
+        <p id="kpiTotal" style="font-size: 22px; font-weight: 500; margin: 0;">-</p>
+      </div>
+      <div style="background: #FCEBEB; border-radius: var(--border-radius-md); padding: 12px;">
+        <p style="font-size: 12px; color: #791F1F; margin: 0 0 4px;"><i class="ti ti-stack-2"></i> 대량형</p>
+        <p id="kpiVolume" style="font-size: 22px; font-weight: 500; margin: 0; color: #501313;">-</p>
+      </div>
+      <div style="background: #FAEEDA; border-radius: var(--border-radius-md); padding: 12px;">
+        <p style="font-size: 12px; color: #854F0B; margin: 0 0 4px;"><i class="ti ti-coin"></i> 고가형</p>
+        <p id="kpiPremium" style="font-size: 22px; font-weight: 500; margin: 0; color: #633806;">-</p>
+      </div>
+      <div style="background: #E6F1FB; border-radius: var(--border-radius-md); padding: 12px;">
+        <p style="font-size: 12px; color: #0C447C; margin: 0 0 4px;"><i class="ti ti-scale"></i> 균형형</p>
+        <p id="kpiBalanced" style="font-size: 22px; font-weight: 500; margin: 0; color: #042C53;">-</p>
+      </div>
+    </div>
 
-  <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; margin-bottom: 1.5rem;">
-    <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
-      <thead>
-        <tr style="background: var(--color-background-secondary);">
-          <th style="width: 32px; padding: 10px 8px 10px 12px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">#</th>
-          <th style="padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">의사</th>
-          <th style="width: 82px; padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">유형</th>
-          <th style="width: 78px; padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: right; font-weight: 500;">처방액</th>
-          <th style="width: 56px; padding: 10px 8px 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: right; font-weight: 500;">점수</th>
-        </tr>
-      </thead>
-      <tbody id="rankTable"></tbody>
-    </table>
-  </div>
+    <div style="display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;">
+      <button class="filter-chip active" data-filter="all" id="chipAll">전체</button>
+      <button class="filter-chip" data-filter="volume" id="chipVolume">대량형</button>
+      <button class="filter-chip" data-filter="premium" id="chipPremium">고가형</button>
+      <button class="filter-chip" data-filter="balanced" id="chipBalanced">균형형</button>
+    </div>
 
-  <div id="detailPanel" style="display: none;">
-    <div style="border-top: 0.5px solid var(--color-border-tertiary); padding-top: 1.5rem;">
+    <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; margin-bottom: 1.5rem;">
+      <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+        <thead>
+          <tr style="background: var(--color-background-secondary);">
+            <th style="width: 32px; padding: 10px 8px 10px 12px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">#</th>
+            <th style="padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">의사</th>
+            <th style="width: 82px; padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: left; font-weight: 500;">유형</th>
+            <th style="width: 78px; padding: 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: right; font-weight: 500;">처방액</th>
+            <th style="width: 56px; padding: 10px 8px 10px 8px; font-size: 11px; color: var(--color-text-secondary); text-align: right; font-weight: 500;">점수</th>
+          </tr>
+        </thead>
+        <tbody id="rankTable"></tbody>
+      </table>
+    </div>
 
-      <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div id="avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #FCEBEB; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 14px; color: #791F1F;">ST</div>
-            <div>
-              <p id="docName" style="font-weight: 500; font-size: 15px; margin: 0;">Dr. Sohaib Tariq</p>
-              <p id="docMeta" style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">Cardiology · El Centro · NPI 1023391166</p>
+    <div id="detailPanel" style="display: none;">
+      <div style="border-top: 0.5px solid var(--color-border-tertiary); padding-top: 1.5rem;">
+
+        <div style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div id="avatar" style="width: 44px; height: 44px; border-radius: 50%; background: #FCEBEB; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 14px; color: #791F1F;">--</div>
+              <div>
+                <p id="docName" style="font-weight: 500; font-size: 15px; margin: 0;">-</p>
+                <p id="docMeta" style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">-</p>
+              </div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span id="patternBadge" class="badge b-volume">-</span>
+              <span style="font-size: 12px; color: var(--color-text-secondary);">점수 <span id="riskValue" style="font-weight: 500; color: var(--color-text-primary);">-</span></span>
             </div>
           </div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <span id="patternBadge" class="badge b-volume">대량형</span>
-            <span style="font-size: 12px; color: var(--color-text-secondary);">점수 <span id="riskValue" style="font-weight: 500; color: var(--color-text-primary);">100</span></span>
-          </div>
         </div>
+
+        <div id="metricGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; margin-bottom: 1.5rem;"></div>
+
+        <div style="margin-bottom: 8px;">
+          <p style="font-size: 13px; font-weight: 500; margin: 0 0 4px;">평균 대비 상대 비율 (평균 = 100%)</p>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0; font-size: 12px; color: var(--color-text-secondary);">
+          <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #888780;"></span>진료과 평균</span>
+          <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #E24B4A;"></span>선택 의사</span>
+        </div>
+
+        <div style="position: relative; width: 100%; height: 260px; margin-bottom: 1.5rem;">
+          <canvas id="peerChart" role="img" aria-label="선택된 의사의 5개 지표를 진료과 평균(100%) 대비 비교한 가로 막대 차트"></canvas>
+        </div>
+
+        <div id="approachBox" style="border-radius: var(--border-radius-md); padding: 14px 16px;">
+          <p id="approachTitle" style="font-size: 13px; font-weight: 500; margin: 0 0 6px;">
+            <i class="ti ti-search"></i> 권장 조사 접근법
+          </p>
+          <p id="approachText" style="font-size: 13px; margin: 0; line-height: 1.6;"></p>
+        </div>
+
       </div>
-
-      <div id="metricGrid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); gap: 8px; margin-bottom: 1.5rem;"></div>
-
-      <div style="margin-bottom: 8px;">
-        <p style="font-size: 13px; font-weight: 500; margin: 0 0 4px;">평균 대비 상대 비율 (평균 = 100%)</p>
-      </div>
-
-      <div style="display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0; font-size: 12px; color: var(--color-text-secondary);">
-        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #888780;"></span>진료과 평균</span>
-        <span style="display: flex; align-items: center; gap: 4px;"><span style="width: 10px; height: 10px; border-radius: 2px; background: #E24B4A;"></span>선택 의사</span>
-      </div>
-
-      <div style="position: relative; width: 100%; height: 260px; margin-bottom: 1.5rem;">
-        <canvas id="peerChart" role="img" aria-label="선택된 의사의 5개 지표를 진료과 평균(100%) 대비 비교한 가로 막대 차트"></canvas>
-      </div>
-
-      <div id="approachBox" style="border-radius: var(--border-radius-md); padding: 14px 16px;">
-        <p id="approachTitle" style="font-size: 13px; font-weight: 500; margin: 0 0 6px;">
-          <i class="ti ti-search"></i> 권장 조사 접근법
-        </p>
-        <p id="approachText" style="font-size: 13px; margin: 0; line-height: 1.6;"></p>
-      </div>
-
     </div>
   </div>
 
@@ -166,24 +198,17 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-  const doctors = [
-    {npi:1023391166, name:"Sohaib Tariq", city:"El Centro", cost:823056, claims:1153, days:40258, benes:284, unit:714, cost_x:10.52, claims_x:15.79, days_x:10.64, benes_x:10.62, unit_x:0.67, risk:100.0},
-    {npi:1477536738, name:"Haroutioun Mesrobian", city:"Glendale", cost:650899, claims:894, days:29304, benes:185, unit:728, cost_x:8.32, claims_x:12.25, days_x:7.74, benes_x:6.92, unit_x:0.68, risk:99.8},
-    {npi:1396714937, name:"Michael Krueger", city:"Fresno", cost:790478, claims:557, days:36933, benes:159, unit:1419, cost_x:10.10, claims_x:7.63, days_x:9.76, benes_x:5.95, unit_x:1.32, risk:99.7},
-    {npi:1104806421, name:"Don Lee", city:"Glendale", cost:663120, claims:744, days:29941, benes:114, unit:891, cost_x:8.48, claims_x:10.19, days_x:7.91, benes_x:4.26, unit_x:0.83, risk:99.7},
-    {npi:1174664783, name:"Leo Polosajian", city:"Reseda", cost:562129, claims:660, days:25230, benes:115, unit:852, cost_x:7.18, claims_x:9.04, days_x:6.67, benes_x:4.30, unit_x:0.79, risk:99.5},
-    {npi:1366438764, name:"Nassir Azimi", city:"La Mesa", cost:584027, claims:468, days:26991, benes:119, unit:1248, cost_x:7.46, claims_x:6.41, days_x:7.13, benes_x:4.45, unit_x:1.16, risk:99.5},
-    {npi:1649224387, name:"Vachaspathi Palakodeti", city:"Imperial", cost:572756, claims:550, days:26520, benes:146, unit:1041, cost_x:7.32, claims_x:7.53, days_x:7.01, benes_x:5.46, unit_x:0.97, risk:99.5},
-    {npi:1003914227, name:"Anna Milstein", city:"Los Angeles", cost:558465, claims:795, days:25248, benes:113, unit:702, cost_x:7.14, claims_x:10.89, days_x:6.67, benes_x:4.23, unit_x:0.66, risk:99.5},
-    {npi:1356487656, name:"Shashi Sharma", city:"Visalia", cost:535530, claims:451, days:24195, benes:113, unit:1187, cost_x:6.84, claims_x:6.18, days_x:6.39, benes_x:4.23, unit_x:1.11, risk:99.2},
-    {npi:1265458954, name:"Michael Yeh", city:"Alhambra", cost:493711, claims:576, days:23011, benes:108, unit:857, cost_x:6.31, claims_x:7.89, days_x:6.08, benes_x:4.04, unit_x:0.80, risk:99.2}
-  ];
+  // ============================================================
+  // Supabase 설정
+  // ============================================================
+  const SUPABASE_URL = 'https://tbpwhshnysrfrmniuhms.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_4yiFRUyL-FlwaK34DS9BMw_Rj7-a_Gn';
+  // 변수명을 supabaseClient로 사용 (CDN의 전역 supabase와 충돌 방지)
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  function classify(d) {
-    if (d.unit_x >= 1.1) return 'premium';
-    if (d.unit_x <= 0.9) return 'volume';
-    return 'balanced';
-  }
+  // ============================================================
+  // 위험 유형 메타데이터
+  // ============================================================
   const patternMeta = {
     volume:   {label:'대량형', cls:'b-volume',   icon:'ti-stack-2', bg:'#FCEBEB', text:'#791F1F',
                approach:'건당 리베이트(per-prescription kickback) 가능성이 높습니다. Open Payments 데이터에서 처방 건당 지불 패턴, 동일 환자에게 반복 처방 빈도, 단일 약품 집중도를 확인하세요. 환자 풀이 비정상적으로 큰지도 검토 대상입니다.'},
@@ -193,45 +218,197 @@
                approach:'전반적 진료 규모 자체가 비정상적으로 큽니다. 단순 과다 진료인지 부정 청구인지 구분하기 위해 진료 시간 대비 환자 수, 청구 코드 분포, 환자 의료기록 샘플 감사를 권장합니다.'}
   };
 
-  const fmt$ = (v) => '$' + (v >= 1000 ? Math.round(v/1000) + 'K' : v);
+  // ============================================================
+  // 유틸 함수
+  // ============================================================
+  function classify(unit_x) {
+    if (unit_x >= 1.1) return 'premium';
+    if (unit_x <= 0.9) return 'volume';
+    return 'balanced';
+  }
+  const fmt$ = (v) => '$' + (v >= 1000 ? Math.round(v/1000) + 'K' : Math.round(v));
   const initials = (name) => name.split(' ').map(s => s[0]).join('').slice(0,2);
   const multClass = (x) => x >= 5 ? 'mult-high' : x >= 2 ? 'mult-mid' : 'mult-low';
 
-  doctors.forEach(d => d.pattern = classify(d));
+  function setStatus(type, message) {
+    const banner = document.getElementById('statusBanner');
+    const text = document.getElementById('statusText');
+    banner.className = 'status-banner status-' + type;
+    text.innerHTML = type === 'loading' 
+      ? '<span class="spinner"></span> ' + message 
+      : message;
+  }
 
-  const tbody = document.getElementById('rankTable');
-  doctors.forEach((d, i) => {
-    const m = patternMeta[d.pattern];
-    const tr = document.createElement('tr');
-    tr.className = 'rank-row' + (i === 0 ? ' active' : '');
-    tr.dataset.idx = i;
-    tr.dataset.pattern = d.pattern;
-    tr.innerHTML = `
-      <td style="color: var(--color-text-secondary);">${i+1}</td>
-      <td><span style="font-weight: 500;">${d.name}</span><br><span style="font-size: 11px; color: var(--color-text-secondary);">${d.city}</span></td>
-      <td><span class="badge ${m.cls}"><i class="ti ${m.icon}" style="font-size:11px;"></i> ${m.label}</span></td>
-      <td class="multiplier" style="text-align: right;">${fmt$(d.cost)}<br><span style="font-size: 11px; font-weight: 400;" class="${multClass(d.cost_x)}">${d.cost_x.toFixed(1)}×</span></td>
-      <td class="multiplier" style="text-align: right; font-weight: 500;">${d.risk.toFixed(1)}</td>
-    `;
-    tr.addEventListener('click', () => selectDoctor(i));
-    tbody.appendChild(tr);
-  });
+  // ============================================================
+  // 1단계: Supabase에서 Cardiology 데이터 가져오기
+  // ============================================================
+  async function fetchCardiologyData() {
+    setStatus('loading', 'Supabase에서 Cardiology 진료과 데이터를 불러오는 중...');
+    
+    // Supabase는 기본 1000행 제한 → range로 더 가져옴
+    const { data, error } = await supabaseClient
+      .from('part_d_prescriber')
+      .select('*')
+      .eq('Prscrbr_Type', 'Cardiology')
+      .range(0, 1499);
+    
+    if (error) throw new Error('데이터 조회 실패: ' + error.message);
+    if (!data || data.length === 0) throw new Error('Cardiology 진료과 데이터가 없습니다.');
+    
+    return data;
+  }
 
-  document.querySelectorAll('.filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      const f = chip.dataset.filter;
-      document.querySelectorAll('.rank-row').forEach(row => {
-        row.classList.toggle('hidden', f !== 'all' && row.dataset.pattern !== f);
+  // ============================================================
+  // 2단계: 평균값 계산 (5개 지표)
+  // ============================================================
+  function calculateAverages(rows) {
+    const totalCost = rows.reduce((s, r) => s + (Number(r.Tot_Drug_Cst) || 0), 0);
+    const totalClaims = rows.reduce((s, r) => s + (Number(r.Tot_Clms) || 0), 0);
+    const totalDays = rows.reduce((s, r) => s + (Number(r.Tot_Day_Suply) || 0), 0);
+    const validBenes = rows.filter(r => r.Tot_Benes != null);
+    const totalBenes = validBenes.reduce((s, r) => s + Number(r.Tot_Benes), 0);
+    
+    return {
+      cost: totalCost / rows.length,
+      claims: totalClaims / rows.length,
+      days: totalDays / rows.length,
+      benes: validBenes.length > 0 ? totalBenes / validBenes.length : 0,
+      unit_price: totalClaims > 0 ? totalCost / totalClaims : 0
+    };
+  }
+
+  // ============================================================
+  // 3단계: 백분위 계산 (위험 점수용)
+  // ============================================================
+  function computePercentiles(rows, field) {
+    const indexed = rows.map((r, i) => ({ idx: i, val: Number(r[field]) || 0 }));
+    indexed.sort((a, b) => a.val - b.val);
+    const result = new Array(rows.length);
+    indexed.forEach((item, rank) => {
+      result[item.idx] = ((rank + 1) / rows.length) * 100;
+    });
+    return result;
+  }
+
+  // ============================================================
+  // 4단계: 위험 점수 + Top 10 + 분류
+  // ============================================================
+  function computeRankings(rows, avg) {
+    const costPct = computePercentiles(rows, 'Tot_Drug_Cst');
+    const claimsPct = computePercentiles(rows, 'Tot_Clms');
+    const benesPct = computePercentiles(rows, 'Tot_Benes');
+    
+    const scored = rows.map((r, i) => ({
+      raw: r,
+      risk: costPct[i] * 0.4 + claimsPct[i] * 0.4 + (benesPct[i] || 0) * 0.2
+    }));
+    
+    // 위험 점수 내림차순 정렬, Top 10
+    scored.sort((a, b) => b.risk - a.risk);
+    const top10 = scored.slice(0, 10);
+    
+    // 최고 점수를 100점으로 정규화
+    const maxRisk = top10[0].risk;
+    
+    return top10.map((item) => {
+      const r = item.raw;
+      const cost = Number(r.Tot_Drug_Cst) || 0;
+      const claims = Number(r.Tot_Clms) || 0;
+      const days = Number(r.Tot_Day_Suply) || 0;
+      const benes = r.Tot_Benes != null ? Number(r.Tot_Benes) : null;
+      const unit = claims > 0 ? cost / claims : 0;
+      const unit_x = avg.unit_price > 0 ? unit / avg.unit_price : 0;
+      
+      return {
+        npi: r.Prscrbr_NPI,
+        name: `${r.Prscrbr_First_Name} ${r.Prscrbr_Last_Org_Name}`,
+        city: r.Prscrbr_City,
+        cost: Math.round(cost),
+        claims: claims,
+        days: days,
+        benes: benes,
+        unit: Math.round(unit),
+        cost_x: +(cost / avg.cost).toFixed(2),
+        claims_x: +(claims / avg.claims).toFixed(2),
+        days_x: +(days / avg.days).toFixed(2),
+        benes_x: benes != null ? +(benes / avg.benes).toFixed(2) : null,
+        unit_x: +unit_x.toFixed(2),
+        risk: +(item.risk / maxRisk * 100).toFixed(1),
+        pattern: classify(unit_x)
+      };
+    });
+  }
+
+  // ============================================================
+  // 5단계: KPI 카드 렌더링
+  // ============================================================
+  function renderKPIs(doctors) {
+    const counts = doctors.reduce((acc, d) => {
+      acc[d.pattern] = (acc[d.pattern] || 0) + 1;
+      return acc;
+    }, {});
+    
+    document.getElementById('kpiTotal').textContent = doctors.length + '명';
+    document.getElementById('kpiVolume').textContent = (counts.volume || 0) + '명';
+    document.getElementById('kpiPremium').textContent = (counts.premium || 0) + '명';
+    document.getElementById('kpiBalanced').textContent = (counts.balanced || 0) + '명';
+    
+    document.getElementById('chipAll').textContent = `전체 ${doctors.length}`;
+    document.getElementById('chipVolume').textContent = `대량형 ${counts.volume || 0}`;
+    document.getElementById('chipPremium').textContent = `고가형 ${counts.premium || 0}`;
+    document.getElementById('chipBalanced').textContent = `균형형 ${counts.balanced || 0}`;
+  }
+
+  // ============================================================
+  // 6단계: 테이블 렌더링
+  // ============================================================
+  function renderTable(doctors) {
+    const tbody = document.getElementById('rankTable');
+    tbody.innerHTML = '';
+    
+    doctors.forEach((d, i) => {
+      const m = patternMeta[d.pattern];
+      const tr = document.createElement('tr');
+      tr.className = 'rank-row' + (i === 0 ? ' active' : '');
+      tr.dataset.idx = i;
+      tr.dataset.pattern = d.pattern;
+      tr.innerHTML = `
+        <td style="color: var(--color-text-secondary);">${i+1}</td>
+        <td><span style="font-weight: 500;">${d.name}</span><br><span style="font-size: 11px; color: var(--color-text-secondary);">${d.city}</span></td>
+        <td><span class="badge ${m.cls}"><i class="ti ${m.icon}" style="font-size:11px;"></i> ${m.label}</span></td>
+        <td class="multiplier" style="text-align: right;">${fmt$(d.cost)}<br><span style="font-size: 11px; font-weight: 400;" class="${multClass(d.cost_x)}">${d.cost_x.toFixed(1)}×</span></td>
+        <td class="multiplier" style="text-align: right; font-weight: 500;">${d.risk.toFixed(1)}</td>
+      `;
+      tr.addEventListener('click', () => selectDoctor(i));
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ============================================================
+  // 7단계: 필터 칩 동작
+  // ============================================================
+  function setupFilters() {
+    document.querySelectorAll('.filter-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        const f = chip.dataset.filter;
+        document.querySelectorAll('.rank-row').forEach(row => {
+          row.classList.toggle('hidden', f !== 'all' && row.dataset.pattern !== f);
+        });
       });
     });
-  });
+  }
 
+  // ============================================================
+  // 8단계: 상세 패널 + 차트
+  // ============================================================
   let chart;
+  let currentDoctors = [];
+  
   function selectDoctor(idx) {
     document.querySelectorAll('.rank-row').forEach((r, i) => r.classList.toggle('active', i === idx));
-    const d = doctors[idx];
+    const d = currentDoctors[idx];
     const m = patternMeta[d.pattern];
 
     document.getElementById('detailPanel').style.display = 'block';
@@ -256,7 +433,7 @@
       {label: '처방액', value: fmt$(d.cost), mult: d.cost_x},
       {label: '처방건수', value: d.claims.toLocaleString(), mult: d.claims_x},
       {label: '처방일수', value: d.days.toLocaleString(), mult: d.days_x},
-      {label: '환자수', value: d.benes + '명', mult: d.benes_x},
+      {label: '환자수', value: (d.benes != null ? d.benes + '명' : 'N/A'), mult: d.benes_x != null ? d.benes_x : 0},
       {label: '건당단가', value: '$' + d.unit, mult: d.unit_x}
     ];
     document.getElementById('metricGrid').innerHTML = metrics.map(mt => {
@@ -268,7 +445,7 @@
       </div>`;
     }).join('');
 
-    const data = [d.claims_x, d.benes_x, d.days_x, d.cost_x, d.unit_x].map(x => Math.round(x * 100));
+    const data = [d.claims_x, d.benes_x || 0, d.days_x, d.cost_x, d.unit_x].map(x => Math.round(x * 100));
     const colors = data.map(v => v >= 500 ? '#E24B4A' : v >= 200 ? '#EF9F27' : v < 100 ? '#639922' : '#E24B4A');
 
     if (chart) {
@@ -302,7 +479,44 @@
     }
   }
 
-  selectDoctor(0);
+  // ============================================================
+  // 메인 실행: 전체 흐름 통합
+  // ============================================================
+  async function loadDashboard() {
+    try {
+      // 1. 데이터 가져오기
+      const rawData = await fetchCardiologyData();
+      setStatus('loading', `${rawData.length}명의 데이터를 분석 중...`);
+      
+      // 2. 평균 계산
+      const avg = calculateAverages(rawData);
+      
+      // 3. 위험 점수 + Top 10 + 분류
+      currentDoctors = computeRankings(rawData, avg);
+      
+      // 4. UI 렌더링
+      renderKPIs(currentDoctors);
+      renderTable(currentDoctors);
+      setupFilters();
+      selectDoctor(0);
+      
+      // 5. 성공 표시
+      document.getElementById('dashboardContent').style.display = 'block';
+      setStatus('success', `✅ ${rawData.length}명 분석 완료 · Cardiology 진료과 · Supabase 실시간 데이터`);
+      
+      // 3초 후 배너 숨김
+      setTimeout(() => {
+        document.getElementById('statusBanner').style.display = 'none';
+      }, 3000);
+      
+    } catch (err) {
+      console.error(err);
+      setStatus('error', '❌ 오류 발생: ' + err.message + ' (브라우저 콘솔에서 자세한 내용 확인)');
+    }
+  }
+
+  // 페이지 로드 시 실행
+  document.addEventListener('DOMContentLoaded', loadDashboard);
 </script>
 </body>
 </html>
